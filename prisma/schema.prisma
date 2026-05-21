@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  username  String   @unique
+  senha     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+model Cliente {
+  id                 Int      @id @default(autoincrement())
+  nome               String
+  responsavel        String
+  negocio            String
+  servicos           String?  @db.Text
+  cidade             String
+  estado             String
+  publico            String?  @db.Text
+  site               String?
+  urlSite            String?  @map("url_site")
+  instagram          String?
+  whatsapp           String?
+  pixel              String?
+  objetivo           String?
+  orcamento          String?
+  historico          String?
+  resultadoEsperado  String?  @map("resultado_esperado") @db.Text
+  criativos          String?
+  descricaoCriativos String?  @map("descricao_criativos") @db.Text
+  listaClientes      String?  @map("lista_clientes")
+  oferta             String?  @db.Text
+  diferencial        String?  @db.Text
+  comunicacao        String?
+  frequencia         String?
+  observacoes        String?  @db.Text
+  dadosExtras        Json?    @map("dados_extras")
+  status             String   @default("novo")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@map("clientes")
+}
+
+model FormularioPasso {
+  id        Int                  @id @default(autoincrement())
+  titulo    String
+  ordem     Int
+  perguntas FormularioPergunta[]
+
+  @@map("formulario_passos")
+}
+
+model FormularioPergunta {
+  id          Int             @id @default(autoincrement())
+  passoId     Int             @map("passo_id")
+  passo       FormularioPasso @relation(fields: [passoId], references: [id], onDelete: Cascade)
+  label       String
+  fieldId     String          @map("field_id")
+  type        String          @default("text")
+  obrigatorio Boolean         @default(false)
+  ordem       Int
+  opcoes      String[]
+
+  @@map("formulario_perguntas")
+}
