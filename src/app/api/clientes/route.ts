@@ -1,41 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAuth } from '@/lib/apiAuth'
 import { prisma } from '@/lib/prisma'
-
-const FIELD_MAP: Record<string, string> = {
-  nome: 'nome',
-  responsavel: 'responsavel',
-  negocio: 'negocio',
-  servicos: 'servicos',
-  cidade: 'cidade',
-  estado: 'estado',
-  publico: 'publico',
-  site: 'site',
-  url_site: 'urlSite',
-  instagram: 'instagram',
-  whatsapp: 'whatsapp',
-  pixel: 'pixel',
-  objetivo: 'objetivo',
-  orcamento: 'orcamento',
-  historico: 'historico',
-  resultado_esperado: 'resultadoEsperado',
-  criativos: 'criativos',
-  descricao_criativos: 'descricaoCriativos',
-  lista_clientes: 'listaClientes',
-  oferta: 'oferta',
-  diferencial: 'diferencial',
-  comunicacao: 'comunicacao',
-  frequencia: 'frequencia',
-  observacoes: 'observacoes',
-}
+import { FIELD_MAP } from '@/lib/fieldMap'
+import { Prisma } from '@prisma/client'
 
 export async function GET() {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const authError = await requireAuth()
+  if (authError) return authError
 
   const clientes = await prisma.cliente.findMany({
     orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      nome: true,
+      negocio: true,
+      cidade: true,
+      estado: true,
+      objetivo: true,
+      orcamento: true,
+      status: true,
+      createdAt: true,
+    },
   })
   return NextResponse.json(clientes)
 }
@@ -43,27 +28,50 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body: Record<string, string> = await req.json()
 
-  const data: Record<string, string | Record<string, string>> = {}
+  const mapped: Record<string, string> = {}
   const extra: Record<string, string> = {}
 
   for (const [fieldId, value] of Object.entries(body)) {
     const col = FIELD_MAP[fieldId]
     if (col) {
-      data[col] = value
+      mapped[col] = value
     } else {
       extra[fieldId] = value
     }
   }
 
-  if (!data.nome || !data.responsavel) {
+  if (!mapped.nome || !mapped.responsavel) {
     return NextResponse.json({ error: 'Campos obrigatórios ausentes' }, { status: 400 })
   }
 
-  if (Object.keys(extra).length > 0) {
-    data.dadosExtras = extra
+  const data: Prisma.ClienteCreateInput = {
+    nome: mapped.nome,
+    responsavel: mapped.responsavel,
+    negocio: mapped.negocio ?? '',
+    cidade: mapped.cidade ?? '',
+    estado: mapped.estado ?? '',
+    servicos: mapped.servicos,
+    publico: mapped.publico,
+    site: mapped.site,
+    urlSite: mapped.urlSite,
+    instagram: mapped.instagram,
+    whatsapp: mapped.whatsapp,
+    pixel: mapped.pixel,
+    objetivo: mapped.objetivo,
+    orcamento: mapped.orcamento,
+    historico: mapped.historico,
+    resultadoEsperado: mapped.resultadoEsperado,
+    criativos: mapped.criativos,
+    descricaoCriativos: mapped.descricaoCriativos,
+    listaClientes: mapped.listaClientes,
+    oferta: mapped.oferta,
+    diferencial: mapped.diferencial,
+    comunicacao: mapped.comunicacao,
+    frequencia: mapped.frequencia,
+    observacoes: mapped.observacoes,
+    ...(Object.keys(extra).length > 0 ? { dadosExtras: extra } : {}),
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cliente = await prisma.cliente.create({ data: data as any })
+  const cliente = await prisma.cliente.create({ data })
   return NextResponse.json(cliente, { status: 201 })
 }

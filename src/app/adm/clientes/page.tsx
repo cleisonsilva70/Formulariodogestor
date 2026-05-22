@@ -1,6 +1,9 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { Spinner } from '@/components/Spinner'
+import { STATUS_COLORS, STATUS_LABELS, STATUS_OPTIONS } from '@/lib/status'
+import { BRAND } from '@/lib/constants'
 
 interface Cliente {
   id: number
@@ -12,18 +15,6 @@ interface Cliente {
   orcamento: string | null
   status: string
   createdAt: string
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  novo: 'bg-blue-100 text-blue-700',
-  em_andamento: 'bg-yellow-100 text-yellow-700',
-  concluido: 'bg-green-100 text-green-700',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  novo: 'Novo',
-  em_andamento: 'Em andamento',
-  concluido: 'Concluído',
 }
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
@@ -48,7 +39,7 @@ function exportCsv(clientes: Cliente[]) {
     c.estado,
     c.objetivo ?? '',
     c.orcamento ?? '',
-    STATUS_LABELS[c.status] ?? c.status,
+    STATUS_LABELS[c.status as keyof typeof STATUS_LABELS] ?? c.status,
     new Date(c.createdAt).toLocaleDateString('pt-BR'),
   ])
   const csv = [cols, ...rows]
@@ -57,9 +48,11 @@ function exportCsv(clientes: Cliente[]) {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
+  document.body.appendChild(a)
   a.href = url
   a.download = `clientes-scalechat-${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
+  document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
 
@@ -76,12 +69,14 @@ export default function Clientes() {
   }, [])
 
   async function updateStatus(id: number, status: string) {
-    await fetch(`/api/clientes/${id}`, {
+    const previous = clientes
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, status } : c))
+    const res = await fetch(`/api/clientes/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
-    setClientes(prev => prev.map(c => c.id === id ? { ...c, status } : c))
+    if (!res.ok) setClientes(previous)
   }
 
   const filtered = useMemo(() => clientes.filter(c => {
@@ -91,12 +86,16 @@ export default function Clientes() {
     return matchStatus && matchBusca
   }), [clientes, filtroStatus, busca])
 
-  const stats = useMemo(() => ({
-    total: clientes.length,
-    novo: clientes.filter(c => c.status === 'novo').length,
-    em_andamento: clientes.filter(c => c.status === 'em_andamento').length,
-    concluido: clientes.filter(c => c.status === 'concluido').length,
-  }), [clientes])
+  const stats = useMemo(() => clientes.reduce(
+    (acc, c) => {
+      acc.total++
+      if (c.status === 'novo') acc.novo++
+      else if (c.status === 'em_andamento') acc.em_andamento++
+      else if (c.status === 'concluido') acc.concluido++
+      return acc
+    },
+    { total: 0, novo: 0, em_andamento: 0, concluido: 0 }
+  ), [clientes])
 
   return (
     <div>
@@ -144,16 +143,12 @@ export default function Clientes() {
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
         >
           <option value="">Todos os status</option>
-          <option value="novo">Novo</option>
-          <option value="em_andamento">Em andamento</option>
-          <option value="concluido">Concluído</option>
+          {STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-4 border-gray-200 rounded-full animate-spin" style={{ borderTopColor: '#185FA5' }} />
-        </div>
+        <Spinner />
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           {busca || filtroStatus ? 'Nenhum cliente encontrado com esses filtros.' : 'Nenhum cliente cadastrado ainda.'}
@@ -188,11 +183,9 @@ export default function Clientes() {
                       <select
                         value={c.status}
                         onChange={e => updateStatus(c.id, e.target.value)}
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-full border-0 cursor-pointer focus:outline-none ${STATUS_COLORS[c.status] || 'bg-gray-100 text-gray-600'}`}
+                        className={`text-xs font-semibold px-2.5 py-1 rounded-full border-0 cursor-pointer focus:outline-none ${STATUS_COLORS[c.status as keyof typeof STATUS_COLORS] || 'bg-gray-100 text-gray-600'}`}
                       >
-                        <option value="novo">Novo</option>
-                        <option value="em_andamento">Em andamento</option>
-                        <option value="concluido">Concluído</option>
+                        {STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-xs hidden sm:table-cell">
@@ -202,7 +195,7 @@ export default function Clientes() {
                       <Link
                         href={`/adm/clientes/${c.id}`}
                         className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors hover:opacity-80 whitespace-nowrap"
-                        style={{ backgroundColor: '#e8f1fb', color: '#185FA5' }}
+                        style={{ backgroundColor: '#e8f1fb', color: BRAND }}
                       >
                         Ver detalhes
                       </Link>

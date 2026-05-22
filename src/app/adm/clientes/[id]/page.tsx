@@ -2,6 +2,10 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { Spinner } from '@/components/Spinner'
+import { STATUS_COLORS, STATUS_OPTIONS } from '@/lib/status'
+import { FIELD_MAP } from '@/lib/fieldMap'
+import { BRAND } from '@/lib/constants'
 
 interface Pergunta {
   id: number
@@ -46,29 +50,6 @@ interface Cliente {
   createdAt: string
 }
 
-const FIELD_MAP: Record<string, keyof Cliente> = {
-  nome: 'nome', responsavel: 'responsavel', negocio: 'negocio',
-  servicos: 'servicos', cidade: 'cidade', estado: 'estado', publico: 'publico',
-  site: 'site', url_site: 'urlSite', instagram: 'instagram', whatsapp: 'whatsapp',
-  pixel: 'pixel', objetivo: 'objetivo', orcamento: 'orcamento', historico: 'historico',
-  resultado_esperado: 'resultadoEsperado', criativos: 'criativos',
-  descricao_criativos: 'descricaoCriativos', lista_clientes: 'listaClientes',
-  oferta: 'oferta', diferencial: 'diferencial', comunicacao: 'comunicacao',
-  frequencia: 'frequencia', observacoes: 'observacoes',
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  novo: 'bg-blue-100 text-blue-700',
-  em_andamento: 'bg-yellow-100 text-yellow-700',
-  concluido: 'bg-green-100 text-green-700',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  novo: 'Novo',
-  em_andamento: 'Em andamento',
-  concluido: 'Concluído',
-}
-
 function FieldValue({ label, value, highlight }: { label: string; value?: string | null; highlight?: boolean }) {
   if (!value) return (
     <div>
@@ -85,8 +66,11 @@ function FieldValue({ label, value, highlight }: { label: string; value?: string
 }
 
 export default function ClienteDetalhes() {
-  const { id } = useParams()
+  const params = useParams()
+  const id = Array.isArray(params.id) ? params.id[0] : params.id
+
   const [cliente, setCliente] = useState<Cliente | null>(null)
+  const [fetchError, setFetchError] = useState(false)
   const [passos, setPassos] = useState<Passo[]>([])
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
@@ -95,38 +79,44 @@ export default function ClienteDetalhes() {
     Promise.all([
       fetch(`/api/clientes/${id}`).then(r => r.json()),
       fetch('/api/formulario').then(r => r.json()),
-    ]).then(([c, p]) => {
-      setCliente(c)
-      setPassos(p)
-      setLoading(false)
-    })
+    ])
+      .then(([c, p]) => {
+        if ('error' in c) {
+          setFetchError(true)
+        } else {
+          setCliente(c)
+          setPassos(p)
+        }
+      })
+      .catch(() => setFetchError(true))
+      .finally(() => setLoading(false))
   }, [id])
 
   async function updateStatus(status: string) {
-    await fetch(`/api/clientes/${id}`, {
+    const previous = cliente
+    setCliente(prev => prev ? { ...prev, status } : prev)
+    const res = await fetch(`/api/clientes/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
-    setCliente(prev => prev ? { ...prev, status } : prev)
+    if (!res.ok) setCliente(previous)
   }
 
-  function copyWhatsApp() {
+  async function copyWhatsApp() {
     if (!cliente?.whatsapp) return
-    navigator.clipboard.writeText(cliente.whatsapp)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(cliente.whatsapp)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // clipboard not available (HTTP / permission denied) — silently ignore
+    }
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-16">
-        <div className="w-8 h-8 border-4 border-gray-200 rounded-full animate-spin" style={{ borderTopColor: '#185FA5' }} />
-      </div>
-    )
-  }
+  if (loading) return <Spinner />
 
-  if (!cliente || (cliente as unknown as { error: string }).error) {
+  if (fetchError || !cliente) {
     return <div className="text-gray-400 text-center py-16">Cliente não encontrado.</div>
   }
 
@@ -164,9 +154,9 @@ export default function ClienteDetalhes() {
               <select
                 value={cliente.status}
                 onChange={e => updateStatus(e.target.value)}
-                className={`text-xs font-semibold px-3 py-2 rounded-lg border-0 cursor-pointer focus:outline-none ${STATUS_COLORS[cliente.status] || 'bg-gray-100'}`}
+                className={`text-xs font-semibold px-3 py-2 rounded-lg border-0 cursor-pointer focus:outline-none ${STATUS_COLORS[cliente.status as keyof typeof STATUS_COLORS] || 'bg-gray-100'}`}
               >
-                {Object.entries(STATUS_LABELS).map(([v, l]) => (
+                {STATUS_OPTIONS.map(([v, l]) => (
                   <option key={v} value={v}>{l}</option>
                 ))}
               </select>
@@ -181,7 +171,7 @@ export default function ClienteDetalhes() {
         {(cliente.objetivo || cliente.orcamento) && (
           <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-100">
             {cliente.objetivo && (
-              <span className="text-xs px-3 py-1 rounded-full font-medium" style={{ backgroundColor: '#e8f1fb', color: '#185FA5' }}>
+              <span className="text-xs px-3 py-1 rounded-full font-medium" style={{ backgroundColor: '#e8f1fb', color: BRAND }}>
                 🎯 {cliente.objetivo}
               </span>
             )}
@@ -203,7 +193,7 @@ export default function ClienteDetalhes() {
       <div className="flex flex-col gap-4">
         {passos.map(passo => {
           const hasData = passo.perguntas.some(pg => {
-            const k = FIELD_MAP[pg.fieldId]
+            const k = FIELD_MAP[pg.fieldId] as keyof Cliente | undefined
             const v = k ? cliente[k] : cliente.dadosExtras?.[pg.fieldId]
             return v
           })
@@ -215,7 +205,7 @@ export default function ClienteDetalhes() {
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {passo.perguntas.map(pergunta => {
-                  const k = FIELD_MAP[pergunta.fieldId]
+                  const k = FIELD_MAP[pergunta.fieldId] as keyof Cliente | undefined
                   const value = (k ? cliente[k] : cliente.dadosExtras?.[pergunta.fieldId]) as string | null | undefined
                   return (
                     <FieldValue

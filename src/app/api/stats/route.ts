@@ -1,20 +1,25 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAuth } from '@/lib/apiAuth'
 import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const authError = await requireAuth()
+  if (authError) return authError
 
-  const [total, novo, em_andamento, concluido] = await Promise.all([
-    prisma.cliente.count(),
-    prisma.cliente.count({ where: { status: 'novo' } }),
-    prisma.cliente.count({ where: { status: 'em_andamento' } }),
-    prisma.cliente.count({ where: { status: 'concluido' } }),
-  ])
+  const rows = await prisma.cliente.groupBy({
+    by: ['status'],
+    _count: { _all: true },
+  })
 
-  return NextResponse.json({ total, novo, em_andamento, concluido })
+  const counts = Object.fromEntries(rows.map(r => [r.status, r._count._all]))
+  const total = rows.reduce((s, r) => s + r._count._all, 0)
+
+  return NextResponse.json({
+    total,
+    novo: counts['novo'] ?? 0,
+    em_andamento: counts['em_andamento'] ?? 0,
+    concluido: counts['concluido'] ?? 0,
+  })
 }

@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAuth } from '@/lib/apiAuth'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const authError = await requireAuth()
+  if (authError) return authError
 
   const cliente = await prisma.cliente.findUnique({ where: { id: Number(params.id) } })
   if (!cliente) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
@@ -13,8 +12,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const authError = await requireAuth()
+  if (authError) return authError
 
   const { status } = await req.json()
   const cliente = await prisma.cliente.update({

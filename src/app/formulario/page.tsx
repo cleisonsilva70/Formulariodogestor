@@ -1,6 +1,9 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Spinner } from '@/components/Spinner'
+import { Logo } from '@/components/Logo'
+import { BRAND } from '@/lib/constants'
 
 interface Pergunta {
   id: number
@@ -18,8 +21,6 @@ interface Passo {
   perguntas: Pergunta[]
 }
 
-const BRAND = '#185FA5'
-
 export default function Formulario() {
   const router = useRouter()
   const cardRef = useRef<HTMLDivElement>(null)
@@ -29,6 +30,7 @@ export default function Formulario() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/formulario')
@@ -37,7 +39,11 @@ export default function Formulario() {
   }, [])
 
   function scrollTop() {
-    setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      )
+    )
   }
 
   function setValue(fieldId: string, val: string) {
@@ -70,26 +76,27 @@ export default function Formulario() {
   async function handleSubmit() {
     if (!validateStep()) return
     setSubmitting(true)
+    setSubmitError(null)
     try {
       const res = await fetch('/api/clientes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(values),
       })
-      if (res.ok) router.push('/sucesso')
-      else setSubmitting(false)
+      if (res.ok) {
+        router.push('/sucesso')
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setSubmitError(body.error || 'Erro ao enviar. Tente novamente.')
+        setSubmitting(false)
+      }
     } catch {
+      setSubmitError('Falha de conexão. Verifique sua internet e tente novamente.')
       setSubmitting(false)
     }
   }
 
-  if (loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" style={{ borderTopColor: BRAND }} />
-      </main>
-    )
-  }
+  if (loading) return <Spinner fullPage />
 
   if (!passos.length) return null
 
@@ -101,13 +108,8 @@ export default function Formulario() {
     <main className="min-h-screen bg-gray-50 py-6 px-4">
       <div className="max-w-xl mx-auto">
         {/* Logo */}
-        <div className="flex items-center gap-2.5 mb-6">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: BRAND }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
-              <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.96 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
-            </svg>
-          </div>
-          <span className="font-bold text-lg" style={{ color: BRAND }}>Scale Chat</span>
+        <div className="mb-6">
+          <Logo size="md" />
         </div>
 
         {/* Progress */}
@@ -223,6 +225,11 @@ export default function Formulario() {
               </div>
             ))}
           </div>
+
+          {/* Submit error */}
+          {submitError && (
+            <p className="mt-4 text-sm text-red-500 bg-red-50 px-4 py-2 rounded-lg">{submitError}</p>
+          )}
 
           {/* Navigation */}
           <div className="flex gap-3 mt-8 pt-5 border-t border-gray-100">

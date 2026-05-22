@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAuth } from '@/lib/apiAuth'
 import { prisma } from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const authError = await requireAuth()
+  if (authError) return authError
 
   const { passoId, label, type, obrigatorio, opcoes } = await req.json()
   if (!passoId || !label) return NextResponse.json({ error: 'Campos obrigatórios ausentes' }, { status: 400 })
 
-  const maxOrdem = await prisma.formularioPergunta.aggregate({
-    where: { passoId: Number(passoId) },
-    _max: { ordem: true },
-  })
+  const count = await prisma.formularioPergunta.count({ where: { passoId: Number(passoId) } })
 
   const fieldId = `custom_${Date.now()}`
   const pergunta = await prisma.formularioPergunta.create({
@@ -23,7 +19,7 @@ export async function POST(req: NextRequest) {
       fieldId,
       type: type || 'text',
       obrigatorio: Boolean(obrigatorio),
-      ordem: (maxOrdem._max.ordem ?? 0) + 1,
+      ordem: count + 1,
       opcoes: opcoes || [],
     },
   })

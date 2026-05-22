@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { BRAND } from '@/lib/constants'
 
 export default function Sucesso() {
   return (
@@ -8,7 +9,7 @@ export default function Sucesso() {
           className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
           style={{ backgroundColor: '#e8f1fb' }}
         >
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#185FA5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={BRAND} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </div>
@@ -19,7 +20,7 @@ export default function Sucesso() {
         <Link
           href="/"
           className="inline-block py-3 px-8 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: '#185FA5' }}
+          style={{ backgroundColor: BRAND }}
         >
           Voltar ao início
         </Link>

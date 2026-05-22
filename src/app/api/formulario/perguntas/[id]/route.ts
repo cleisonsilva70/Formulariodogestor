@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAuth } from '@/lib/apiAuth'
 import { prisma } from '@/lib/prisma'
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const authError = await requireAuth()
+  if (authError) return authError
 
   const body = await req.json()
   const pergunta = await prisma.formularioPergunta.update({
@@ -21,8 +20,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const authError = await requireAuth()
+  if (authError) return authError
 
   await prisma.formularioPergunta.delete({ where: { id: Number(params.id) } })
   return NextResponse.json({ ok: true })
