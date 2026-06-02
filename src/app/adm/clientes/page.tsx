@@ -74,6 +74,7 @@ export default function Clientes() {
   const [filtroStatus, setFiltroStatus] = useState('')
   const [loading,      setLoading]      = useState(true)
   const [fetching,     setFetching]     = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
 
   // Debounce search input
   useEffect(() => {
@@ -131,6 +132,17 @@ export default function Clientes() {
       body:    JSON.stringify({ status: newStatus }),
     })
     if (!res.ok) { setClientes(prevClientes); setStats(prevStats) }
+  }
+
+  async function deleteCliente(id: number) {
+    await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
+    setClientes(prev => prev.filter(c => c.id !== id))
+    setTotal(prev => prev - 1)
+    setStats(prev => {
+      const status = clientes.find(c => c.id === id)?.status ?? ''
+      return { ...prev, total: prev.total - 1, [status]: Math.max(0, prev[status] - 1) }
+    })
+    setPendingDeleteId(null)
   }
 
   async function handleExportCsv() {
@@ -242,13 +254,44 @@ export default function Clientes() {
                       {new Date(c.createdAt).toLocaleDateString('pt-BR')}
                     </td>
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/adm/clientes/${c.id}`}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors hover:opacity-80 whitespace-nowrap"
-                        style={{ backgroundColor: '#e8f1fb', color: BRAND }}
-                      >
-                        Ver detalhes
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/adm/clientes/${c.id}`}
+                          className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors hover:opacity-80 whitespace-nowrap"
+                          style={{ backgroundColor: '#e8f1fb', color: BRAND }}
+                        >
+                          Ver detalhes
+                        </Link>
+                        {pendingDeleteId === c.id ? (
+                          <>
+                            <button
+                              onClick={() => deleteCliente(c.id)}
+                              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors whitespace-nowrap"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              onClick={() => setPendingDeleteId(null)}
+                              className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => setPendingDeleteId(c.id)}
+                            title="Excluir cliente"
+                            className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"/>
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                              <path d="M10 11v6M14 11v6"/>
+                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                            </svg>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
