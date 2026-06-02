@@ -25,6 +25,7 @@ interface StatsData {
   novo: number
   em_andamento: number
   concluido: number
+  [key: string]: number
 }
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
