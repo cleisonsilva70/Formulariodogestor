@@ -22,3 +22,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   })
   return NextResponse.json(cliente)
 }
+
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const authError = await requireAuth()
+  if (authError) return authError
+
+  await prisma.cliente.delete({ where: { id: Number(params.id) } })
+  return NextResponse.json({ ok: true })
+}

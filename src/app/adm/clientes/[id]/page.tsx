@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Spinner } from '@/components/Spinner'
@@ -67,13 +68,16 @@ function FieldValue({ label, value, highlight }: { label: string; value?: string
 
 export default function ClienteDetalhes() {
   const params = useParams()
+  const router = useRouter()
   const id = Array.isArray(params.id) ? params.id[0] : params.id
 
-  const [cliente, setCliente] = useState<Cliente | null>(null)
-  const [fetchError, setFetchError] = useState(false)
-  const [passos, setPassos] = useState<Passo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [copied, setCopied] = useState(false)
+  const [cliente,     setCliente]     = useState<Cliente | null>(null)
+  const [fetchError,  setFetchError]  = useState(false)
+  const [passos,      setPassos]      = useState<Passo[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [copied,      setCopied]      = useState(false)
+  const [deleting,    setDeleting]    = useState(false)
+  const [confirmDel,  setConfirmDel]  = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Cancela o timer ao desmontar para evitar stale state update
@@ -117,6 +121,12 @@ export default function ClienteDetalhes() {
     } catch {
       // clipboard not available (HTTP / permission denied) — silently ignore
     }
+  }
+
+  async function deleteCliente() {
+    setDeleting(true)
+    await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
+    router.push('/adm/clientes')
   }
 
   function whatsAppUrl(number: string) {
@@ -192,6 +202,40 @@ export default function ClienteDetalhes() {
             <span className="text-xs text-gray-400">
               {new Date(cliente.createdAt).toLocaleDateString('pt-BR')}
             </span>
+
+            {/* Excluir cliente */}
+            {confirmDel ? (
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-red-50 border border-red-200">
+                <span className="text-xs text-red-600 font-medium">Excluir permanentemente?</span>
+                <button
+                  onClick={deleteCliente}
+                  disabled={deleting}
+                  className="text-xs font-semibold px-3 py-1 rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-60 transition-colors"
+                >
+                  {deleting ? 'Excluindo...' : 'Sim, excluir'}
+                </button>
+                <button
+                  onClick={() => setConfirmDel(false)}
+                  disabled={deleting}
+                  className="text-xs px-2 py-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDel(true)}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6M14 11v6"/>
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                </svg>
+                Excluir
+              </button>
+            )}
           </div>
         </div>
 
