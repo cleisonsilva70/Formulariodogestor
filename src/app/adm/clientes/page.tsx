@@ -5,6 +5,8 @@ import { Spinner } from '@/components/Spinner'
 import { STATUS_COLORS, STATUS_LABELS, STATUS_OPTIONS } from '@/lib/status'
 import { BRAND } from '@/lib/constants'
 
+const PAGE_SIZE = 20
+
 interface Cliente {
   id: number
   nome: string
@@ -16,6 +18,13 @@ interface Cliente {
   orcamento: string | null
   status: string
   createdAt: string
+}
+
+interface StatsData {
+  total: number
+  novo: number
+  em_andamento: number
+  concluido: number
 }
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
@@ -31,13 +40,9 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 }
 
 function exportCsv(clientes: Cliente[]) {
-  const cols = ['ID', 'Nome', 'Negócio', 'Cidade', 'Estado', 'Objetivo', 'Orçamento', 'Status', 'Data']
+  const cols = ['ID', 'Nome', 'Responsável', 'Negócio', 'Cidade', 'Estado', 'Objetivo', 'Orçamento', 'Status', 'Data']
   const rows = clientes.map(c => [
-    c.id,
-    c.nome,
-    c.negocio,
-    c.cidade,
-    c.estado,
+    c.id, c.nome, c.responsavel, c.negocio, c.cidade, c.estado,
     c.objetivo ?? '',
     c.orcamento ?? '',
     STATUS_LABELS[c.status as keyof typeof STATUS_LABELS] ?? c.status,
@@ -47,10 +52,10 @@ function exportCsv(clientes: Cliente[]) {
     .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
     .join('\n')
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
   document.body.appendChild(a)
-  a.href = url
+  a.href     = url
   a.download = `clientes-scalechat-${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   document.body.removeChild(a)
@@ -58,55 +63,93 @@ function exportCsv(clientes: Cliente[]) {
 }
 
 export default function Clientes() {
-  const [clientes, setClientes] = useState<Cliente[]>([])
-  const [loading, setLoading] = useState(true)
+  const [clientes,     setClientes]     = useState<Cliente[]>([])
+  const [stats,        setStats]        = useState<StatsData>({ total: 0, novo: 0, em_andamento: 0, concluido: 0 })
+  const [total,        setTotal]        = useState(0)
+  const [pages,        setPages]        = useState(1)
+  const [page,         setPage]         = useState(1)
+  const [q,            setQ]            = useState('')
+  const [debouncedQ,   setDebouncedQ]   = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
-  const [busca, setBusca] = useState('')
+  const [loading,      setLoading]      = useState(true)
+  const [fetching,     setFetching]     = useState(false)
 
+  // Debounce search input
   useEffect(() => {
-    fetch('/api/clientes')
-      .then(r => r.json())
-      .then(data => { setClientes(data) })
-      .catch(() => {}) // evita spinner infinito em falha de rede
-      .finally(() => setLoading(false))
-  }, [])
+    const t = setTimeout(() => setDebouncedQ(q), 300)
+    return () => clearTimeout(t)
+  }, [q])
 
-  async function updateStatus(id: number, status: string) {
-    const previous = clientes
-    setClientes(prev => prev.map(c => c.id === id ? { ...c, status } : c))
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1) }, [debouncedQ, filtroStatus])
+
+  // Derive API URL from current state
+  const apiUrl = useMemo(() => {
+    const p = new URLSearchParams({ page: String(page) })
+    if (debouncedQ)   p.set('q',      debouncedQ)
+    if (filtroStatus) p.set('status', filtroStatus)
+    return `/api/clientes?${p}`
+  }, [page, debouncedQ, filtroStatus])
+
+  // Fetch whenever URL changes; cancels in-flight requests on next change
+  useEffect(() => {
+    let cancelled = false
+    setFetching(true)
+    fetch(apiUrl)
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return
+        setClientes(data.data)
+        setTotal(data.total)
+        setPages(data.pages)
+        setStats(data.stats)
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) { setFetching(false); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [apiUrl])
+
+  async function updateStatus(id: number, newStatus: string) {
+    const prevClientes = clientes
+    const prevStats    = stats
+    const oldStatus    = clientes.find(c => c.id === id)?.status
+
+    // Optimistic update — clientes row + stat cards
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c))
+    if (oldStatus && oldStatus !== newStatus) {
+      setStats(prev => ({
+        ...prev,
+        [oldStatus]:  Math.max(0, (prev as Record<string, number>)[oldStatus]  - 1),
+        [newStatus]:            ((prev as Record<string, number>)[newStatus] ?? 0) + 1,
+      }))
+    }
+
     const res = await fetch(`/api/clientes/${id}`, {
-      method: 'PATCH',
+      method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
+      body:    JSON.stringify({ status: newStatus }),
     })
-    if (!res.ok) setClientes(previous)
+    if (!res.ok) { setClientes(prevClientes); setStats(prevStats) }
   }
 
-  const filtered = useMemo(() => clientes.filter(c => {
-    const matchStatus = !filtroStatus || c.status === filtroStatus
-    const q = busca.toLowerCase()
-    const matchBusca = !q || c.nome.toLowerCase().includes(q) || c.negocio.toLowerCase().includes(q) || c.cidade.toLowerCase().includes(q) || c.responsavel.toLowerCase().includes(q)
-    return matchStatus && matchBusca
-  }), [clientes, filtroStatus, busca])
+  async function handleExportCsv() {
+    const p = new URLSearchParams({ all: 'true' })
+    if (debouncedQ)   p.set('q',      debouncedQ)
+    if (filtroStatus) p.set('status', filtroStatus)
+    const data: Cliente[] = await fetch(`/api/clientes?${p}`).then(r => r.json())
+    exportCsv(data)
+  }
 
-  const stats = useMemo(() => clientes.reduce(
-    (acc, c) => {
-      acc.total++
-      if (c.status === 'novo') acc.novo++
-      else if (c.status === 'em_andamento') acc.em_andamento++
-      else if (c.status === 'concluido') acc.concluido++
-      return acc
-    },
-    { total: 0, novo: 0, em_andamento: 0, concluido: 0 }
-  ), [clientes])
+  const start = (page - 1) * PAGE_SIZE + 1
+  const end   = Math.min(page * PAGE_SIZE, total)
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-gray-800">Clientes</h1>
         <button
-          onClick={() => exportCsv(filtered)}
-          disabled={filtered.length === 0}
+          onClick={handleExportCsv}
+          disabled={total === 0}
           className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-40"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -120,10 +163,10 @@ export default function Clientes() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Total" value={stats.total} color="bg-gray-300" />
-        <StatCard label="Novos" value={stats.novo} color="bg-blue-400" />
-        <StatCard label="Em andamento" value={stats.em_andamento} color="bg-yellow-400" />
-        <StatCard label="Concluídos" value={stats.concluido} color="bg-green-400" />
+        <StatCard label="Total"        value={stats.total}        color="bg-gray-300"  />
+        <StatCard label="Novos"        value={stats.novo}         color="bg-blue-400"  />
+        <StatCard label="Em andamento" value={stats.em_andamento} color="bg-yellow-400"/>
+        <StatCard label="Concluídos"   value={stats.concluido}    color="bg-green-400" />
       </div>
 
       {/* Filters */}
@@ -134,9 +177,9 @@ export default function Clientes() {
           </svg>
           <input
             type="text"
-            placeholder="Buscar por nome, negócio ou cidade..."
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar por nome, responsável, negócio ou cidade..."
+            value={q}
+            onChange={e => setQ(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1"
           />
         </div>
@@ -152,12 +195,12 @@ export default function Clientes() {
 
       {loading ? (
         <Spinner />
-      ) : filtered.length === 0 ? (
+      ) : total === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          {busca || filtroStatus ? 'Nenhum cliente encontrado com esses filtros.' : 'Nenhum cliente cadastrado ainda.'}
+          {q || filtroStatus ? 'Nenhum cliente encontrado com esses filtros.' : 'Nenhum cliente cadastrado ainda.'}
         </div>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-opacity duration-150 ${fetching ? 'opacity-60 pointer-events-none' : ''}`}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -173,9 +216,12 @@ export default function Clientes() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map(c => (
+                {clientes.map(c => (
                   <tr key={c.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="px-4 py-3 font-medium text-gray-800">{c.nome}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-800">{c.nome}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{c.responsavel}</p>
+                    </td>
                     <td className="px-4 py-3 text-gray-600 hidden md:table-cell">{c.negocio}</td>
                     <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">{c.cidade}/{c.estado}</td>
                     <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">{c.objetivo || '—'}</td>
@@ -208,8 +254,34 @@ export default function Clientes() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">
-            {filtered.length} de {clientes.length} cliente{clientes.length !== 1 ? 's' : ''}
+
+          {/* Footer: count + pagination */}
+          <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-4">
+            <span className="text-xs text-gray-400">
+              {total === 0 ? '0 resultados' : `${start}–${end} de ${total} cliente${total !== 1 ? 's' : ''}`}
+            </span>
+
+            {pages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(p => p - 1)}
+                  disabled={page === 1}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-default transition-colors"
+                >
+                  ←
+                </button>
+                <span className="px-3 py-1.5 text-xs text-gray-500 min-w-[64px] text-center">
+                  {page} / {pages}
+                </span>
+                <button
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={page === pages}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-default transition-colors"
+                >
+                  →
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

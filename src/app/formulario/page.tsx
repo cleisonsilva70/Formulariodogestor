@@ -21,15 +21,64 @@ interface Passo {
   perguntas: Pergunta[]
 }
 
+// --- Input masking ---
+
+function maskPhone(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 11)
+  if (d.length === 0) return ''
+  if (d.length <= 2)  return `(${d}`
+  if (d.length <= 6)  return `(${d.slice(0, 2)}) ${d.slice(2)}`
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+}
+
+// Transforms applied on each keystroke before storing
+const INPUT_TRANSFORMS: Record<string, (v: string) => string> = {
+  whatsapp:  v => maskPhone(v),
+  orcamento: v => v.replace(/[^\d.,]/g, ''),        // only digits and separators
+  instagram: v => v.replace(/^@+/, ''),              // strip leading @
+}
+
+// Placeholder hints shown inside each input
+const INPUT_HINTS: Record<string, { placeholder?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'] }> = {
+  whatsapp:  { placeholder: '(11) 99999-9999', inputMode: 'tel'     },
+  orcamento: { placeholder: 'Ex: 1500',         inputMode: 'numeric' },
+  url_site:  { placeholder: 'Ex: meusite.com.br'                     },
+  instagram: { placeholder: 'usuario (sem @)'                        },
+}
+
+// --- Format validators (run only when field has a value) ---
+
+const FORMAT_VALIDATORS: Record<string, (v: string) => string | null> = {
+  whatsapp: v => {
+    const d = v.replace(/\D/g, '')
+    if (d.length < 10 || d.length > 11) return 'Digite DDD + número (ex: 11 99999-9999)'
+    return null
+  },
+  url_site: v => {
+    try {
+      new URL(v.startsWith('http') ? v : `https://${v}`)
+      return null
+    } catch {
+      return 'URL inválida (ex: meusite.com.br)'
+    }
+  },
+  orcamento: v => {
+    const n = parseFloat(v.replace(/\./g, '').replace(',', '.'))
+    if (isNaN(n) || n <= 0) return 'Digite um valor em reais (ex: 1500)'
+    return null
+  },
+}
+
 export default function Formulario() {
-  const router = useRouter()
+  const router  = useRouter()
   const cardRef = useRef<HTMLDivElement>(null)
-  const [passos, setPassos] = useState<Passo[]>([])
-  const [step, setStep] = useState(0)
-  const [values, setValues] = useState<Record<string, string>>({})
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
+  const [passos,      setPassos]      = useState<Passo[]>([])
+  const [step,        setStep]        = useState(0)
+  const [values,      setValues]      = useState<Record<string, string>>({})
+  const [errors,      setErrors]      = useState<Record<string, string>>({})
+  const [loading,     setLoading]     = useState(true)
+  const [submitting,  setSubmitting]  = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -46,8 +95,10 @@ export default function Formulario() {
     )
   }
 
-  function setValue(fieldId: string, val: string) {
-    setValues(prev => ({ ...prev, [fieldId]: val }))
+  function setValue(fieldId: string, raw: string) {
+    const transform = INPUT_TRANSFORMS[fieldId]
+    const v = transform ? transform(raw) : raw
+    setValues(prev => ({ ...prev, [fieldId]: v }))
     if (errors[fieldId]) setErrors(prev => ({ ...prev, [fieldId]: '' }))
   }
 
@@ -55,8 +106,12 @@ export default function Formulario() {
     const passo = passos[step]
     const newErrors: Record<string, string> = {}
     passo.perguntas.forEach(p => {
-      if (p.obrigatorio && !values[p.fieldId]?.trim()) {
+      const val = values[p.fieldId]?.trim()
+      if (p.obrigatorio && !val) {
         newErrors[p.fieldId] = 'Campo obrigatório'
+      } else if (val && FORMAT_VALIDATORS[p.fieldId]) {
+        const err = FORMAT_VALIDATORS[p.fieldId](val)
+        if (err) newErrors[p.fieldId] = err
       }
     })
     setErrors(newErrors)
@@ -79,9 +134,9 @@ export default function Formulario() {
     setSubmitError(null)
     try {
       const res = await fetch('/api/clientes', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body:    JSON.stringify(values),
       })
       if (res.ok) {
         router.push('/sucesso')
@@ -97,11 +152,10 @@ export default function Formulario() {
   }
 
   if (loading) return <Spinner fullPage />
-
   if (!passos.length) return null
 
-  const passo = passos[step]
-  const total = passos.length
+  const passo    = passos[step]
+  const total    = passos.length
   const progress = Math.round(((step + 1) / total) * 100)
 
   return (
@@ -124,7 +178,6 @@ export default function Formulario() {
               style={{ width: `${progress}%`, backgroundColor: BRAND }}
             />
           </div>
-          {/* Step dots */}
           <div className="flex gap-1 mt-2 justify-center">
             {passos.map((_, i) => (
               <div
@@ -146,84 +199,93 @@ export default function Formulario() {
           <h2 className="text-lg font-bold text-gray-800 mb-5">{passo.titulo}</h2>
 
           <div className="flex flex-col gap-5">
-            {passo.perguntas.map(pergunta => (
-              <div key={pergunta.id}>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  {pergunta.label}
-                  {pergunta.obrigatorio
-                    ? <span className="text-red-400 ml-1">*</span>
-                    : <span className="text-gray-300 text-xs ml-2 font-normal">opcional</span>
-                  }
-                </label>
+            {passo.perguntas.map(pergunta => {
+              const hints = INPUT_HINTS[pergunta.fieldId] ?? {}
+              const hasError = !!errors[pergunta.fieldId]
 
-                {pergunta.type === 'text' && (
-                  <input
-                    type="text"
-                    value={values[pergunta.fieldId] || ''}
-                    onChange={e => setValue(pergunta.fieldId, e.target.value)}
-                    className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 transition-colors ${
-                      errors[pergunta.fieldId] ? 'border-red-300 bg-red-50' : 'border-gray-200'
-                    }`}
-                  />
-                )}
+              return (
+                <div key={pergunta.id}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    {pergunta.label}
+                    {pergunta.obrigatorio
+                      ? <span className="text-red-400 ml-1">*</span>
+                      : <span className="text-gray-300 text-xs ml-2 font-normal">opcional</span>
+                    }
+                  </label>
 
-                {pergunta.type === 'textarea' && (
-                  <div>
-                    <textarea
+                  {pergunta.type === 'text' && (
+                    <input
+                      type="text"
+                      inputMode={hints.inputMode}
+                      placeholder={hints.placeholder}
                       value={values[pergunta.fieldId] || ''}
                       onChange={e => setValue(pergunta.fieldId, e.target.value)}
-                      rows={3}
-                      className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 transition-colors resize-none ${
-                        errors[pergunta.fieldId] ? 'border-red-300 bg-red-50' : 'border-gray-200'
+                      className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 transition-colors ${
+                        hasError ? 'border-red-300 bg-red-50' : 'border-gray-200'
                       }`}
                     />
-                    <p className="text-xs text-gray-300 text-right mt-0.5">
-                      {(values[pergunta.fieldId] || '').length} caracteres
-                    </p>
-                  </div>
-                )}
+                  )}
 
-                {pergunta.type === 'select' && (
-                  <div className="flex flex-col gap-2">
-                    {pergunta.opcoes.map(opcao => {
-                      const selected = values[pergunta.fieldId] === opcao
-                      return (
-                        <label
-                          key={opcao}
-                          className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                            selected ? 'border-blue-400 shadow-sm' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                          }`}
-                          style={selected ? { borderColor: BRAND, backgroundColor: '#f0f6ff' } : {}}
-                        >
-                          <input
-                            type="radio"
-                            name={pergunta.fieldId}
-                            value={opcao}
-                            checked={selected}
-                            onChange={() => setValue(pergunta.fieldId, opcao)}
-                            className="sr-only"
-                          />
-                          <div
-                            className="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors"
-                            style={{ borderColor: selected ? BRAND : '#d1d5db' }}
+                  {pergunta.type === 'textarea' && (
+                    <div>
+                      <textarea
+                        value={values[pergunta.fieldId] || ''}
+                        onChange={e => setValue(pergunta.fieldId, e.target.value)}
+                        rows={3}
+                        className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 transition-colors resize-none ${
+                          hasError ? 'border-red-300 bg-red-50' : 'border-gray-200'
+                        }`}
+                      />
+                      <p className="text-xs text-gray-300 text-right mt-0.5">
+                        {(values[pergunta.fieldId] || '').length} caracteres
+                      </p>
+                    </div>
+                  )}
+
+                  {pergunta.type === 'select' && (
+                    <div className="flex flex-col gap-2">
+                      {pergunta.opcoes.map(opcao => {
+                        const selected = values[pergunta.fieldId] === opcao
+                        return (
+                          <label
+                            key={opcao}
+                            className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                              selected ? 'border-blue-400 shadow-sm' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                            }`}
+                            style={selected ? { borderColor: BRAND, backgroundColor: '#f0f6ff' } : {}}
                           >
-                            {selected && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: BRAND }} />}
-                          </div>
-                          <span className={`text-sm ${selected ? 'text-gray-800 font-medium' : 'text-gray-600'}`}>{opcao}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                )}
+                            <input
+                              type="radio"
+                              name={pergunta.fieldId}
+                              value={opcao}
+                              checked={selected}
+                              onChange={() => setValue(pergunta.fieldId, opcao)}
+                              className="sr-only"
+                            />
+                            <div
+                              className="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors"
+                              style={{ borderColor: selected ? BRAND : '#d1d5db' }}
+                            >
+                              {selected && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: BRAND }} />}
+                            </div>
+                            <span className={`text-sm ${selected ? 'text-gray-800 font-medium' : 'text-gray-600'}`}>{opcao}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
 
-                {errors[pergunta.fieldId] && (
-                  <p className="text-red-400 text-xs mt-1 flex items-center gap-1">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-                    {errors[pergunta.fieldId]}
-                  </p>
-                )}
-              </div>
-            ))}
+                  {hasError && (
+                    <p className="text-red-400 text-xs mt-1 flex items-center gap-1">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                      </svg>
+                      {errors[pergunta.fieldId]}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
           </div>
 
           {/* Submit error */}
