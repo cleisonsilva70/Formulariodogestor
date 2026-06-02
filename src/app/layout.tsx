@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Scale Chat',
+  title: 'Formulário Scale Chat',
   description: 'Plataforma de onboarding Scale Chat',
   icons: {
     icon:     '/logo.png',
