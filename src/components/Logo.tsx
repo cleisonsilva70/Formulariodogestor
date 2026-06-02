@@ -18,7 +18,7 @@ export function Logo({ size = 'md' }: { size?: keyof typeof SIZES }) {
         className="object-contain"
         priority
       />
-      <span className={`font-bold ${s.textClass} text-gray-800`}>Scale Chat</span>
+      <span className={`font-bold ${s.textClass} text-gray-800`}>Formulário Scale Chat</span>
     </div>
   )
 }
