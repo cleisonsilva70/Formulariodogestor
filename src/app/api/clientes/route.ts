@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/apiAuth'
 import { prisma } from '@/lib/prisma'
 import { FIELD_MAP } from '@/lib/fieldMap'
+import { rateLimit } from '@/lib/rateLimit'
 import { Prisma } from '@prisma/client'
 
 export async function GET() {
@@ -13,6 +14,7 @@ export async function GET() {
     select: {
       id: true,
       nome: true,
+      responsavel: true,
       negocio: true,
       cidade: true,
       estado: true,
@@ -26,6 +28,16 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim()
+    ?? req.headers.get('x-real-ip')
+    ?? 'unknown'
+  if (!rateLimit(ip, 5, 60_000)) {
+    return NextResponse.json(
+      { error: 'Muitas tentativas. Aguarde 1 minuto e tente novamente.' },
+      { status: 429 },
+    )
+  }
+
   const body: Record<string, string> = await req.json()
 
   const mapped: Record<string, string> = {}

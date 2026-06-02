@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { requireAuth } from '@/lib/apiAuth'
 import { prisma } from '@/lib/prisma'
 
@@ -14,5 +15,7 @@ export async function POST(req: NextRequest) {
     data: { titulo, ordem: count + 1 },
     include: { perguntas: { orderBy: { ordem: 'asc' } } },
   })
+
+  revalidatePath('/api/formulario')
   return NextResponse.json(passo, { status: 201 })
 }

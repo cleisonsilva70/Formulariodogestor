@@ -8,6 +8,7 @@ import { BRAND } from '@/lib/constants'
 interface Cliente {
   id: number
   nome: string
+  responsavel: string
   negocio: string
   cidade: string
   estado: string
@@ -65,7 +66,9 @@ export default function Clientes() {
   useEffect(() => {
     fetch('/api/clientes')
       .then(r => r.json())
-      .then(data => { setClientes(data); setLoading(false) })
+      .then(data => { setClientes(data) })
+      .catch(() => {}) // evita spinner infinito em falha de rede
+      .finally(() => setLoading(false))
   }, [])
 
   async function updateStatus(id: number, status: string) {
@@ -82,7 +85,7 @@ export default function Clientes() {
   const filtered = useMemo(() => clientes.filter(c => {
     const matchStatus = !filtroStatus || c.status === filtroStatus
     const q = busca.toLowerCase()
-    const matchBusca = !q || c.nome.toLowerCase().includes(q) || c.negocio.toLowerCase().includes(q) || c.cidade.toLowerCase().includes(q)
+    const matchBusca = !q || c.nome.toLowerCase().includes(q) || c.negocio.toLowerCase().includes(q) || c.cidade.toLowerCase().includes(q) || c.responsavel.toLowerCase().includes(q)
     return matchStatus && matchBusca
   }), [clientes, filtroStatus, busca])
 

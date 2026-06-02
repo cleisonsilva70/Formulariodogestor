@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { requireAuth } from '@/lib/apiAuth'
 import { prisma } from '@/lib/prisma'
 
@@ -14,14 +15,16 @@ export async function POST(req: NextRequest) {
   const fieldId = `custom_${Date.now()}`
   const pergunta = await prisma.formularioPergunta.create({
     data: {
-      passoId: Number(passoId),
+      passoId:    Number(passoId),
       label,
       fieldId,
-      type: type || 'text',
-      obrigatorio: Boolean(obrigatorio),
-      ordem: count + 1,
-      opcoes: opcoes || [],
+      type:       type || 'text',
+      obrigatorio:Boolean(obrigatorio),
+      ordem:      count + 1,
+      opcoes:     opcoes || [],
     },
   })
+
+  revalidatePath('/api/formulario')
   return NextResponse.json(pergunta, { status: 201 })
 }
