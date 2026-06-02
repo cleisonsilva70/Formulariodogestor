@@ -4,6 +4,11 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'Scale Chat',
   description: 'Plataforma de onboarding Scale Chat',
+  icons: {
+    icon:     '/logo.png',
+    shortcut: '/logo.png',
+    apple:    '/logo.png',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
