@@ -106,6 +106,7 @@ export default function Formulario() {
     const passo = passos[step]
     const newErrors: Record<string, string> = {}
     passo.perguntas.forEach(p => {
+      if (p.type === 'info') return // campos informativos não têm valor
       const val = values[p.fieldId]?.trim()
       if (p.obrigatorio && !val) {
         newErrors[p.fieldId] = 'Campo obrigatório'
@@ -212,6 +213,28 @@ export default function Formulario() {
                       : <span className="text-gray-300 text-xs ml-2 font-normal">opcional</span>
                     }
                   </label>
+
+                  {pergunta.type === 'info' && (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 flex flex-col gap-3">
+                      <div className="flex items-start gap-2">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#185FA5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 flex-shrink-0">
+                          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                        <p className="text-xs text-blue-700 leading-relaxed">
+                          Para gerenciarmos suas campanhas, precisamos de acesso à sua <strong>Business Manager</strong> no Meta. Adicione o e-mail abaixo como <strong>Parceiro</strong> nas configurações da sua BM.
+                        </p>
+                      </div>
+                      <div className="bg-white rounded-lg px-4 py-3 border border-blue-200 flex items-center justify-between gap-3">
+                        <span className="text-sm font-bold text-blue-900 break-all">{pergunta.label}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#185FA5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                      </div>
+                      <p className="text-xs text-blue-500">
+                        Meta Business Suite → Configurações → Parceiros → Adicionar parceiro
+                      </p>
+                    </div>
+                  )}
 
                   {pergunta.type === 'text' && (
                     <input

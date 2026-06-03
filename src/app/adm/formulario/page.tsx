@@ -398,6 +398,7 @@ function PerguntaEditor({ pergunta, loading, onSave, onCancel }: {
             <option value="text">Texto</option>
             <option value="textarea">Texto longo</option>
             <option value="select">Seleção</option>
+            <option value="info">Informativo (exibe e-mail/instrução)</option>
           </select>
         </div>
         <div className="flex items-end pb-1">
